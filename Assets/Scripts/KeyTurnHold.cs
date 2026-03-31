@@ -1,18 +1,17 @@
 ﻿using UnityEngine;
-using UnityEngine.InputSystem;
-using TS.GazeInteraction;
+using UnityEngine.XR.Interaction.Toolkit;
+using UnityEngine.XR.Interaction.Toolkit.Interactables;
 
-public class KeyTurnHold : MonoBehaviour
+public class KeyTurnButton : MonoBehaviour
 {
+    [Header("XR Interaction")]
+    public XRSimpleInteractable interactable;
+
     [Header("Rotation")]
     public Transform key;
     public float rotationSpeed = 120f;
     public float maxAngle = 90f;
     public Vector3 localRotationAxis = Vector3.up;
-
-    [Header("Interaction")]
-    public GazeInteractable gazeInteractable;
-    public InputActionReference triggerAction;
 
     [Header("Audio")]
     public AudioSource audioSource;
@@ -28,14 +27,10 @@ public class KeyTurnHold : MonoBehaviour
     public StepManager stepManager;
     public int stepIndex = 4;
 
-    private bool isLooking = false;
     private bool turning = false;
-
     private float currentAngle = 0f;
     private float targetAngle = 0f;
-
     private Quaternion startLocalRotation;
-    private bool wasTriggerPressed = false;
 
     void Start()
     {
@@ -51,104 +46,70 @@ public class KeyTurnHold : MonoBehaviour
 
     void OnEnable()
     {
-        if (gazeInteractable != null)
-        {
-            gazeInteractable.Enter += HandleEnter;
-            gazeInteractable.Exit += HandleExit;
-        }
-
-        if (triggerAction != null)
-            triggerAction.action.Enable();
+        if (interactable != null)
+            interactable.selectEntered.AddListener(OnKeyPressed);
     }
 
     void OnDisable()
     {
-        if (gazeInteractable != null)
-        {
-            gazeInteractable.Enter -= HandleEnter;
-            gazeInteractable.Exit -= HandleExit;
-        }
-
-        if (triggerAction != null)
-            triggerAction.action.Disable();
+        if (interactable != null)
+            interactable.selectEntered.RemoveListener(OnKeyPressed);
     }
 
     void Update()
     {
-        if (key == null) return;
+        if (key == null || !turning) return;
 
-        bool triggerPressed = false;
+        currentAngle = Mathf.MoveTowards(
+            currentAngle,
+            targetAngle,
+            rotationSpeed * Time.deltaTime
+        );
 
-        if (triggerAction != null)
-            triggerPressed = triggerAction.action.ReadValue<float>() > 0.1f;
+        key.localRotation =
+            startLocalRotation *
+            Quaternion.AngleAxis(currentAngle, localRotationAxis.normalized);
 
-        bool triggerJustPressed = triggerPressed && !wasTriggerPressed;
-
-        if (isLooking && triggerJustPressed && !turning)
+        if (Mathf.Approximately(currentAngle, targetAngle))
         {
-            turning = true;
+            turning = false;
 
-            if (Mathf.Approximately(currentAngle, 0f))
-                targetAngle = maxAngle;
-            else
-                targetAngle = 0f;
-
-            if (audioSource != null && keySound != null)
-                audioSource.PlayOneShot(keySound);
-        }
-
-        if (turning)
-        {
-            currentAngle = Mathf.MoveTowards(
-                currentAngle,
-                targetAngle,
-                rotationSpeed * Time.deltaTime
-            );
-
-            key.localRotation =
-                startLocalRotation *
-                Quaternion.AngleAxis(currentAngle, localRotationAxis.normalized);
-
-            if (Mathf.Approximately(currentAngle, targetAngle))
+            if (greenLight != null)
             {
-                turning = false;
+                Color c = Mathf.Approximately(targetAngle, maxAngle)
+                    ? Color.green * 3f
+                    : Color.black;
 
-                if (greenLight != null)
-                {
-                    Color c = Mathf.Approximately(targetAngle, maxAngle)
-                        ? Color.green * 3f
-                        : Color.black;
+                greenLight.material.EnableKeyword("_EMISSION");
+                greenLight.material.SetColor("_EmissionColor", c);
+            }
 
-                    greenLight.material.EnableKeyword("_EMISSION");
-                    greenLight.material.SetColor("_EmissionColor", c);
-                }
+            if (Mathf.Approximately(targetAngle, maxAngle))
+            {
+                if (stepManager != null && stepManager.currentStep == stepIndex)
+                    stepManager.CompleteCurrentStep();
+            }
 
-                if (Mathf.Approximately(targetAngle, maxAngle))
-                {
-                    if (stepManager != null && stepManager.currentStep == stepIndex)
-                    {
-                        stepManager.CompleteCurrentStep();
-                    }
-                }
-
-                if (Mathf.Approximately(targetAngle, 0f))
-                {
-                    TurnOffSpecificYellowLight();
-                }
+            if (Mathf.Approximately(targetAngle, 0f))
+            {
+                TurnOffSpecificYellowLight();
             }
         }
-
-        wasTriggerPressed = triggerPressed;
     }
 
-    void HandleEnter(GazeInteractable i, GazeInteractor g, Vector3 p)
+    private void OnKeyPressed(SelectEnterEventArgs args)
     {
-        isLooking = true;
-    }
+        if (turning) return;
 
-    void HandleExit(GazeInteractable i, GazeInteractor g)
-    {
-        isLooking = false;
+        if (Mathf.Approximately(currentAngle, 0f))
+            targetAngle = maxAngle;
+        else
+            targetAngle = 0f;
+
+        turning = true;
+
+        if (audioSource != null && keySound != null)
+            audioSource.PlayOneShot(keySound);
     }
 
     void TurnOffSpecificYellowLight()

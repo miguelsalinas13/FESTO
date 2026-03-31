@@ -1,5 +1,7 @@
+using System.Collections;
 using TMPro;
 using UnityEngine;
+using UnityEngine.UI;
 
 public class VRKeypad : MonoBehaviour
 {
@@ -8,8 +10,8 @@ public class VRKeypad : MonoBehaviour
     public TMP_Text messageText;
 
     [Header("UI Panels")]
-    public GameObject keypadPanel;      // panel que contiene todo el keypad
-    public GameObject successImage;     // imagen o panel que aparecerá al acertar
+    public GameObject keypadPanel;
+    public GameObject successImage;
 
     [Header("Password")]
     public string correctPassword = "1234";
@@ -23,6 +25,10 @@ public class VRKeypad : MonoBehaviour
     public AudioClip errorSound;
     public AudioClip clearSound;
     public AudioClip backspaceSound;
+
+    [Header("Visual Feedback")]
+    public Color pressedColor = Color.green;
+    public float pressedDuration = 0.15f;
 
     [Header("Step Manager")]
     public StepManager stepManager;
@@ -40,6 +46,14 @@ public class VRKeypad : MonoBehaviour
         PlaySound(keySound);
     }
 
+    public void PressKeyWithVisual(string key, Image buttonImage)
+    {
+        PressKey(key);
+
+        if (buttonImage != null)
+            StartCoroutine(FlashUIButton(buttonImage));
+    }
+
     public void ClearInput()
     {
         currentInput = "";
@@ -49,6 +63,14 @@ public class VRKeypad : MonoBehaviour
             messageText.text = "";
 
         PlaySound(clearSound != null ? clearSound : keySound);
+    }
+
+    public void ClearInputWithVisual(Image buttonImage)
+    {
+        ClearInput();
+
+        if (buttonImage != null)
+            StartCoroutine(FlashUIButton(buttonImage));
     }
 
     public void Backspace()
@@ -61,6 +83,14 @@ public class VRKeypad : MonoBehaviour
         }
     }
 
+    public void BackspaceWithVisual(Image buttonImage)
+    {
+        Backspace();
+
+        if (buttonImage != null)
+            StartCoroutine(FlashUIButton(buttonImage));
+    }
+
     public void ConfirmInput()
     {
         if (currentInput == correctPassword)
@@ -69,22 +99,16 @@ public class VRKeypad : MonoBehaviour
                 messageText.text = "Access granted";
 
             Debug.Log("Correct password");
-
             PlaySound(successSound != null ? successSound : keySound);
 
-            // ocultar keypad
             if (keypadPanel != null)
                 keypadPanel.SetActive(false);
 
-            // mostrar imagen o nuevo panel
             if (successImage != null)
                 successImage.SetActive(true);
 
-            // avanzar al siguiente step solo si estamos en el step correcto
             if (stepManager != null && stepManager.currentStep == loginStepIndex)
-            {
                 stepManager.CompleteCurrentStep();
-            }
         }
         else
         {
@@ -92,9 +116,16 @@ public class VRKeypad : MonoBehaviour
                 messageText.text = "Wrong password";
 
             Debug.Log("Wrong password");
-
             PlaySound(errorSound != null ? errorSound : keySound);
         }
+    }
+
+    public void ConfirmInputWithVisual(Image buttonImage)
+    {
+        ConfirmInput();
+
+        if (buttonImage != null)
+            StartCoroutine(FlashUIButton(buttonImage));
     }
 
     private void RefreshDisplay()
@@ -102,15 +133,24 @@ public class VRKeypad : MonoBehaviour
         if (passwordDisplay == null)
             return;
 
-        if (hideCharacters)
-            passwordDisplay.text = new string('*', currentInput.Length);
-        else
-            passwordDisplay.text = currentInput;
+        passwordDisplay.text = hideCharacters
+            ? new string('*', currentInput.Length)
+            : currentInput;
     }
 
     private void PlaySound(AudioClip clip)
     {
         if (audioSource != null && clip != null)
             audioSource.PlayOneShot(clip);
+    }
+
+    private IEnumerator FlashUIButton(Image buttonImage)
+    {
+        Color originalColor = buttonImage.color;
+        buttonImage.color = pressedColor;
+
+        yield return new WaitForSeconds(pressedDuration);
+
+        buttonImage.color = originalColor;
     }
 }
