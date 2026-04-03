@@ -1,11 +1,19 @@
 ﻿using UnityEngine;
+using UnityEngine.InputSystem;
 using UnityEngine.XR.Interaction.Toolkit;
 using UnityEngine.XR.Interaction.Toolkit.Interactables;
+using UnityEngine.XR.Interaction.Toolkit.Interactors;
 
 public class KeyTurnButton : MonoBehaviour
 {
     [Header("XR Interaction")]
     public XRSimpleInteractable interactable;
+
+    [Header("Input")]
+    public InputActionReference triggerAction;
+
+    [Header("Optional Filter")]
+    public XRRayInteractor allowedRayInteractor;
 
     [Header("Rotation")]
     public Transform key;
@@ -32,6 +40,8 @@ public class KeyTurnButton : MonoBehaviour
     private float targetAngle = 0f;
     private Quaternion startLocalRotation;
 
+    private bool isHoveredByAllowedInteractor = false;
+
     void Start()
     {
         if (key != null)
@@ -39,50 +49,63 @@ public class KeyTurnButton : MonoBehaviour
 
         if (greenLight != null)
         {
-            greenLight.material.EnableKeyword("_EMISSION");
-            greenLight.material.SetColor("_EmissionColor", Color.black);
+            foreach (Material mat in greenLight.materials)
+            {
+                mat.EnableKeyword("_EMISSION");
+                mat.SetColor("_EmissionColor", Color.black);
+            }
         }
     }
 
     void OnEnable()
     {
         if (interactable != null)
-            interactable.selectEntered.AddListener(OnKeyPressed);
+        {
+            interactable.hoverEntered.AddListener(OnHoverEntered);
+            interactable.hoverExited.AddListener(OnHoverExited);
+        }
+
+        if (triggerAction != null && triggerAction.action != null)
+            triggerAction.action.Enable();
     }
 
     void OnDisable()
     {
         if (interactable != null)
-            interactable.selectEntered.RemoveListener(OnKeyPressed);
+        {
+            interactable.hoverEntered.RemoveListener(OnHoverEntered);
+            interactable.hoverExited.RemoveListener(OnHoverExited);
+        }
+
+        if (triggerAction != null && triggerAction.action != null)
+            triggerAction.action.Disable();
     }
 
     void Update()
     {
-        if (key == null || !turning) return;
-
-        currentAngle = Mathf.MoveTowards(
-            currentAngle,
-            targetAngle,
-            rotationSpeed * Time.deltaTime
-        );
-
-        key.localRotation =
-            startLocalRotation *
-            Quaternion.AngleAxis(currentAngle, localRotationAxis.normalized);
-
-        if (Mathf.Approximately(currentAngle, targetAngle))
+        if (triggerAction != null &&
+            triggerAction.action != null &&
+            isHoveredByAllowedInteractor &&
+            !turning &&
+            triggerAction.action.WasPressedThisFrame())
         {
+            TurnKey();
+        }
+
+        if (key == null || !turning)
+            return;
+
+        currentAngle = Mathf.MoveTowards(currentAngle, targetAngle, rotationSpeed * Time.deltaTime);
+
+        key.localRotation = startLocalRotation *
+                            Quaternion.AngleAxis(currentAngle, localRotationAxis.normalized);
+
+        if (Mathf.Abs(currentAngle - targetAngle) < 0.01f)
+        {
+            currentAngle = targetAngle;
             turning = false;
 
-            if (greenLight != null)
-            {
-                Color c = Mathf.Approximately(targetAngle, maxAngle)
-                    ? Color.green * 3f
-                    : Color.black;
-
-                greenLight.material.EnableKeyword("_EMISSION");
-                greenLight.material.SetColor("_EmissionColor", c);
-            }
+            UpdateGreenLight();
 
             if (Mathf.Approximately(targetAngle, maxAngle))
             {
@@ -97,10 +120,38 @@ public class KeyTurnButton : MonoBehaviour
         }
     }
 
-    private void OnKeyPressed(SelectEnterEventArgs args)
+    private void OnHoverEntered(HoverEnterEventArgs args)
     {
-        if (turning) return;
+        if (allowedRayInteractor == null)
+        {
+            isHoveredByAllowedInteractor = true;
+            return;
+        }
 
+        if (args.interactorObject is XRRayInteractor rayInteractor &&
+            rayInteractor == allowedRayInteractor)
+        {
+            isHoveredByAllowedInteractor = true;
+        }
+    }
+
+    private void OnHoverExited(HoverExitEventArgs args)
+    {
+        if (allowedRayInteractor == null)
+        {
+            isHoveredByAllowedInteractor = false;
+            return;
+        }
+
+        if (args.interactorObject is XRRayInteractor rayInteractor &&
+            rayInteractor == allowedRayInteractor)
+        {
+            isHoveredByAllowedInteractor = false;
+        }
+    }
+
+    private void TurnKey()
+    {
         if (Mathf.Approximately(currentAngle, 0f))
             targetAngle = maxAngle;
         else
@@ -112,9 +163,26 @@ public class KeyTurnButton : MonoBehaviour
             audioSource.PlayOneShot(keySound);
     }
 
-    void TurnOffSpecificYellowLight()
+    private void UpdateGreenLight()
     {
-        if (yellowBlockToTurnOff == null) return;
+        if (greenLight == null)
+            return;
+
+        Color emissionColor = Mathf.Approximately(targetAngle, maxAngle)
+            ? Color.green * 3f
+            : Color.black;
+
+        foreach (Material mat in greenLight.materials)
+        {
+            mat.EnableKeyword("_EMISSION");
+            mat.SetColor("_EmissionColor", emissionColor);
+        }
+    }
+
+    private void TurnOffSpecificYellowLight()
+    {
+        if (yellowBlockToTurnOff == null)
+            return;
 
         foreach (Material mat in yellowBlockToTurnOff.materials)
         {
